@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ダークソウル風カードゲーム</title>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; background-color: #333; color: #ddd; }
+        .zone { display: inline-block; vertical-align: top; margin: 10px; }
+        .card { border: 1px solid #aaa; margin: 5px; padding: 10px; background: #555; color: #fff; }
+        .hidden { display: none; }
+        #log { height: 150px; overflow-y: auto; border: 1px solid #666; background: #444; padding: 5px; }
+    </style>
+</head>
+<body>
+    <h1>ダークソウル風カードゲーム</h1>
+    <div>
+        <h2>プレイヤー HP: <span id="player-hp">100</span></h2>
+        <div id="player-deck" class="zone">デッキ: 20</div>
+        <div id="player-hand" class="zone"></div>
+        <div id="player-vanish" class="zone">ヴァニッシュゾーン</div>
+    </div>
+    <div>
+        <h2>敵 HP: <span id="enemy-hp">100</span></h2>
+        <div id="enemy-deck" class="zone">デッキ: 20</div>
+        <div id="enemy-vanish" class="zone"></div>
+    </div>
+    <button id="end-turn">ターン終了</button>
+    <div id="log"></div>
+
+    <script>
+        class Card {
+            constructor(name, attack = 0, effect = "") {
+                this.name = name;
+                this.attack = attack;
+                this.effect = effect;
+            }
+        }
+
+        const playerDeck = [];
+        const enemyDeck = [];
+        const playerHand = [];
+        const playerVanish = [];
+        const enemyVanish = [];
+        const enemyHand = [];
+        let playerHP = 100;
+        let enemyHP = 100;
+        let playerDefense = null; // プレイヤーの防御状態
+        let enemyDefense = null;  // 敵の防御状態
+
+        function addCardToDeck(deck, name, count, attack, effect = "") {
+            for (let i = 0; i < count; i++) deck.push(new Card(name, attack, effect));
+        }
+
+        function initializeDecks() {
+            addCardToDeck(playerDeck, "逆袈裟", 3, 15);
+            addCardToDeck(playerDeck, "小盾", 3, 0, "defense:shield");
+            addCardToDeck(playerDeck, "エスト瓶", 2, -20, "heal");
+
+            addCardToDeck(enemyDeck, "剣防御", 3, 0, "defense:swordBlock");
+            addCardToDeck(enemyDeck, "飛びかかり斬り", 2, 20);
+        }
+
+        function drawCards(deck, hand, count) {
+            for (let i = 0; i < count; i++) {
+                if (deck.length === 0) return;
+                hand.push(deck.pop());
+            }
+        }
+
+        function renderHand() {
+            const handDiv = document.getElementById("player-hand");
+            handDiv.innerHTML = "";
+            playerHand.forEach((card, index) => {
+                handDiv.innerHTML += `<div class="card" onclick="playCard(${index})">${card.name} (${card.attack})</div>`;
+            });
+        }
+
+function logMessage(message) {
+    const logDiv = document.getElementById("log");
+    logDiv.innerHTML += `<div>${message}</div>`;
+    setTimeout(() => {
+        logDiv.scrollTop = logDiv.scrollHeight; // 自動スクロール
+    }, 0);
+}
+
+        function playCard(index) {
+            const card = playerHand.splice(index, 1)[0];
+            playerVanish.push(card);
+            logMessage(`プレイヤーは「${card.name}」を使用した！`);
+            applyCardEffect(card, "player");
+            renderHand();
+            enemyTurn();
+        }
+
+        function enemyTurn() {
+            drawCards(enemyDeck, enemyHand, 1);
+            if (enemyHand.length > 0) {
+                const card = enemyHand.pop();
+                enemyVanish.push(card);
+                logMessage(`敵は「${card.name}」を使用した！`);
+                applyCardEffect(card, "enemy");
+            }
+            checkGameOver();
+        }
+
+function applyCardEffect(card, user) {
+    let damage = card.attack; // 基本攻撃力
+    let message = ""; // ログメッセージ
+
+    if (card.effect.startsWith("defense")) {
+        if (user === "player") {
+            playerDefense = card.effect.split(":")[1];
+            message = `プレイヤーは「${card.name}」を使用して防御態勢に入った！`;
+        } else {
+            enemyDefense = card.effect.split(":")[1];
+            message = `敵は「${card.name}」を使用して防御態勢に入った！`;
+        }
+        logMessage(message);
+        return; // 防御カードはこれ以上処理しない
+    }
+
+    if (card.name === "エスト瓶") {
+        const healAmount = Math.abs(card.attack); // 回復量を取得（攻撃力がマイナスの場合）
+        if (user === "player") {
+            playerHP = Math.min(100, playerHP + healAmount);
+            message = `プレイヤーは${healAmount}回復した！`;
+        } else {
+            enemyHP = Math.min(100, enemyHP + healAmount);
+            message = `敵は${healAmount}回復した！`;
+        }
+        logMessage(message);
+        updateHP();
+        return; // 回復カードはこれ以上処理しない
+    }
+
+    // ダメージ計算と防御処理
+    if (user === "player") {
+        if (enemyDefense === "swordBlock") {
+            damage = Math.max(0, damage - 10); // ダメージ軽減
+            enemyDefense = null; // 防御状態解除
+        }
+        enemyHP = Math.max(0, enemyHP - damage);
+        message = `敵に${damage}のダメージを与えた！`;
+    } else {
+        if (playerDefense === "shield") {
+            damage = Math.floor(damage * 0.75); // ダメージ25%軽減
+            playerDefense = null; // 防御状態解除
+        }
+        playerHP = Math.max(0, playerHP - damage);
+        message = `プレイヤーは${damage}のダメージを受けた！`;
+    }
+
+    logMessage(message);
+    updateHP();
+}
+
+        function updateHP() {
+            document.getElementById("player-hp").innerText = playerHP;
+            document.getElementById("enemy-hp").innerText = enemyHP;
+        }
+
+        function checkGameOver() {
+            if (playerHP <= 0) logMessage("プレイヤーの敗北...");
+            if (enemyHP <= 0) logMessage("敵を倒した！");
+        }
+
+        document.getElementById("end-turn").addEventListener("click", () => {
+            drawCards(playerDeck, playerHand, 5 - playerHand.length);
+            renderHand();
+            logMessage("プレイヤーのターン終了。");
+            enemyTurn();
+        });
+
+        initializeDecks();
+        drawCards(playerDeck, playerHand, 5);
+        renderHand();
+        updateHP();
+    </script>
+</body>
+</html>
